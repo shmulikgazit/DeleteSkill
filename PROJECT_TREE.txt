@@ -1,0 +1,179 @@
+LivePerson Skill Cleaner - Project Structure
+=============================================
+
+DeleteSkill/
+│
+├── Documentation (13 files)
+│   ├── START_HERE.md                    ← Begin here!
+│   ├── QUICK_START.md                   ← 5-minute setup
+│   ├── GET_STARTED.md                   ← Beginner guide
+│   ├── SETUP_GUIDE.md                   ← Detailed setup
+│   ├── EXAMPLE_USAGE.md                 ← 10 usage scenarios
+│   ├── README.md                        ← Complete reference
+│   ├── API_REFERENCE.md                 ← API documentation
+│   ├── INTERNAL_API_GUIDE.md            ← Capture internal APIs
+│   ├── TROUBLESHOOTING.md               ← Fix problems
+│   ├── WORKFLOW_DIAGRAM.md              ← Visual diagrams
+│   ├── PROJECT_SUMMARY.md               ← Project overview
+│   ├── DOCUMENTATION_INDEX.md           ← Doc navigation
+│   └── DELIVERY_SUMMARY.md              ← What was delivered
+│
+├── Source Code (12 files)
+│   └── src/
+│       ├── index.js                     ← CLI entry point
+│       │
+│       ├── api/                         ← API integrations
+│       │   ├── client.js                ← Base HTTP client + OAuth
+│       │   ├── domain.js                ← Domain API
+│       │   ├── skills.js                ← Skills API
+│       │   ├── users.js                 ← Users API
+│       │   ├── predefinedContent.js     ← Predefined Content API
+│       │   └── internal.js              ← Internal API placeholder
+│       │
+│       ├── services/                    ← Business logic
+│       │   ├── dependencyFinder.js      ← Find dependencies
+│       │   └── dependencyRemover.js     ← Remove dependencies
+│       │
+│       └── utils/                       ← Utilities
+│           ├── config.js                ← Configuration
+│           ├── logger.js                ← Logging
+│           └── formatter.js             ← Output formatting
+│
+├── Configuration
+│   ├── config/
+│   │   └── default.json                 ← Default settings
+│   ├── .env.example                     ← Credentials template
+│   ├── .env                             ← Your credentials (create this!)
+│   └── .gitignore                       ← Git ignore rules
+│
+├── Package Management
+│   ├── package.json                     ← Dependencies + scripts
+│   └── package-lock.json                ← Locked versions
+│
+├── Generated Folders (created automatically)
+│   ├── reports/                         ← CSV/JSON reports
+│   ├── backups/                         ← Backup files
+│   └── node_modules/                    ← Installed packages
+│
+└── Project Metadata
+    └── PROJECT_TREE.txt                 ← This file
+
+
+Quick Command Reference
+=======================
+
+Setup:
+  npm install
+  Copy-Item .env.example .env
+  notepad .env
+
+Basic Usage:
+  node src/index.js list-skills
+  node src/index.js find -s SKILL_ID
+  node src/index.js find -s SKILL_ID -o report.csv
+
+Removal:
+  node src/index.js remove -s SKILL_ID --dry-run
+  node src/index.js backup -s SKILL_ID
+  node src/index.js remove -s SKILL_ID -e all
+
+Help:
+  node src/index.js --help
+
+
+Features Implemented
+====================
+
+Phase 1 (Read-Only):
+  ✓ List all skills
+  ✓ Find dependencies (users, canned responses)
+  ✓ Export to JSON/CSV
+  ✓ Pretty console tables
+  ✓ Placeholder for engagements/widgets
+
+Phase 2 (Write Operations):
+  ✓ Remove skill from users
+  ✓ Remove skill from canned responses
+  ✓ Delete skill after cleanup
+  ✓ Dry-run mode
+  ✓ Automatic backups
+  ✓ Batch processing
+  ✓ Error handling
+
+Infrastructure:
+  ✓ OAuth 2.0 authentication
+  ✓ Domain API integration
+  ✓ Token caching and refresh
+  ✓ Retry logic with backoff
+  ✓ Rate limit handling
+  ✓ Comprehensive logging
+  ✓ Windows compatibility
+
+
+External APIs Integrated
+=========================
+
+1. Domain API
+   - Get base URIs for services
+   - Endpoint: api.liveperson.net
+
+2. Skills API
+   - List, get, delete skills
+   - Service: accountConfigReadOnly/ReadWrite
+
+3. Users API
+   - List, get, update users
+   - Filter by skillIds
+
+4. Predefined Content API
+   - List, get, update canned responses
+   - Filter by skillIds
+
+
+Internal APIs (Manual Capture Required)
+========================================
+
+1. Engagements API
+   - Not publicly documented
+   - Guidance provided in INTERNAL_API_GUIDE.md
+   - Tool will warn if engagements found
+
+2. Widgets API
+   - Not publicly documented
+   - Guidance provided in INTERNAL_API_GUIDE.md
+   - Tool will warn if widgets found
+
+
+Technology Stack
+================
+
+Runtime:      Node.js (ES6+ modules)
+HTTP Client:  axios
+CLI:          commander
+Output:       chalk, cli-table3
+Export:       json2csv
+Config:       dotenv
+Platform:     Windows (PowerShell)
+
+
+Getting Started
+===============
+
+1. Read: START_HERE.md or QUICK_START.md
+2. Configure: .env file with your credentials
+3. Test: node src/index.js list-skills
+4. Use: node src/index.js find -s SKILL_ID
+
+For detailed instructions, see SETUP_GUIDE.md
+
+
+Project Status
+==============
+
+✓ All planned features implemented
+✓ All todos completed
+✓ Code syntax validated
+✓ Comprehensive documentation
+✓ Ready for use
+
+Next: Configure your .env file and start using the tool!

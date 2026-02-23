@@ -1,0 +1,10 @@
+node_modules/
+.env
+*.log
+*.csv
+backups/
+reports/
+.DS_Store
+
+# Test files
+Test Account.md

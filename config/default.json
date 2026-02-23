@@ -1,0 +1,23 @@
+{
+  "liveperson": {
+    "domainApiBase": "https://api.liveperson.net",
+    "apiVersion": "1.0",
+    "serviceNames": {
+      "readOnly": "accountConfigReadOnly",
+      "readWrite": "accountConfigReadWrite"
+    },
+    "retryPolicy": {
+      "maxRetries": 3,
+      "initialDelayMs": 1000,
+      "maxDelayMs": 10000
+    },
+    "rateLimit": {
+      "requestsPerSecond": 10
+    }
+  },
+  "output": {
+    "defaultFormat": "table",
+    "reportsDir": "reports",
+    "backupsDir": "backups"
+  }
+}
