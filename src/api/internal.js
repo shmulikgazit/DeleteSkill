@@ -23,6 +23,28 @@ class InternalApi {
     }
   }
 
+  async getWidgetById(widgetId) {
+    try {
+      const domain = await domainApi.getReadWriteDomain();
+      const url = `https://${domain}/api/account/${config.liveperson.accountId}/configuration/le-ui-personalization/widgets/${widgetId}?v=2.0&select=$all`;
+      
+      // Try with OAuth first, fall back to user login if needed
+      try {
+        const data = await apiClient.get(url);
+        return data;
+      } catch (error) {
+        if (error.response?.status === 403 && userLoginClient.isConfigured()) {
+          const data = await userLoginClient.get(url);
+          return data;
+        }
+        throw error;
+      }
+    } catch (error) {
+      logger.error(`Failed to fetch widget ${widgetId}:`, error.message);
+      throw error;
+    }
+  }
+
   async getWidgetsBySkillId(skillId) {
     try {
       logger.info(`Finding widgets with skill ID: ${skillId}...`);
@@ -36,6 +58,40 @@ class InternalApi {
       return widgetsWithSkill;
     } catch (error) {
       logger.error('Failed to filter widgets by skill:', error.message);
+      return [];
+    }
+  }
+
+  async getAllEngagements() {
+    if (userLoginClient.isConfigured()) {
+      try {
+        logger.info('Fetching all engagements...');
+        const campaignsApi = (await import('./campaigns.js')).campaignsApi;
+        const campaigns = await campaignsApi.getAllCampaigns();
+        
+        const allEngagements = [];
+        for (const campaign of campaigns) {
+          const fullCampaign = await campaignsApi.getCampaignById(campaign.id);
+          if (fullCampaign.engagements) {
+            fullCampaign.engagements.forEach(eng => {
+              allEngagements.push({
+                ...eng,
+                campaignId: campaign.id,
+                campaignName: campaign.name
+              });
+            });
+          }
+        }
+        
+        logger.success(`Retrieved ${allEngagements.length} engagements from ${campaigns.length} campaigns`);
+        return allEngagements;
+      } catch (error) {
+        logger.error('Failed to fetch engagements:', error.message);
+        logger.warn('Engagements require user login credentials');
+        return [];
+      }
+    } else {
+      logger.warn('Engagements require user login credentials (LP_USERNAME and LP_PASSWORD in .env)');
       return [];
     }
   }
@@ -65,10 +121,27 @@ class InternalApi {
       const domain = await domainApi.getReadWriteDomain();
       const url = `https://${domain}/api/account/${config.liveperson.accountId}/configuration/le-ui-personalization/widgets/${widgetId}?v=2.0`;
       
-      const data = await apiClient.put(url, widgetData);
+      // Add headers for widget update (POST with method override)
+      const headers = {
+        'X-HTTP-Method-Override': 'PUT'
+      };
       
-      logger.success(`Widget ${widgetId} updated successfully`);
-      return data;
+      if (widgetData._revision) {
+        headers['If-Match'] = widgetData._revision;
+        // Remove _revision from the data payload
+        const { _revision, ...cleanData } = widgetData;
+        widgetData = cleanData;
+      }
+      
+      // Use POST with X-HTTP-Method-Override: PUT (requires user login)
+      if (userLoginClient.isConfigured()) {
+        const data = await userLoginClient.post(url, widgetData, { headers });
+        logger.success(`Widget ${widgetId} updated successfully`);
+        return data;
+      } else {
+        logger.warn('Widgets API requires user login credentials. Please configure LP_USERNAME and LP_PASSWORD in .env');
+        throw new Error('User login required for widgets API');
+      }
     } catch (error) {
       logger.error(`Failed to update widget ${widgetId}:`, error.message);
       throw error;
@@ -79,12 +152,7 @@ class InternalApi {
     try {
       logger.info(`Removing skill ${skillId} from widget ${widgetId}...`);
       
-      const allWidgets = await this.getAllWidgets();
-      const widget = allWidgets.find(w => w.id === widgetId);
-      
-      if (!widget) {
-        throw new Error(`Widget ${widgetId} not found`);
-      }
+      const widget = await this.getWidgetById(widgetId);
       
       if (!widget.skillIds || !widget.skillIds.includes(Number(skillId))) {
         logger.warn(`Widget ${widgetId} does not have skill ${skillId}`);

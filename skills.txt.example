@@ -1,0 +1,10 @@
+# List of skill IDs to process
+# Lines starting with # are comments and will be ignored
+# One skill ID per line
+
+12345
+67890
+11111
+
+# You can also add comments inline
+22222  # This is another skill

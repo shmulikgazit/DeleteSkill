@@ -2,9 +2,22 @@ node_modules/
 .env
 *.log
 *.csv
+*.xlsx
+~$*.xlsx
+*.bak
+*.har
+*.zip
 backups/
 reports/
 .DS_Store
 
 # Test files
 Test Account.md
+
+# Input files (but keep examples)
+skills.txt
+skills.json
+skill-names.txt
+!skills.txt.example
+!skills.json.example
+!skill-names.txt.example

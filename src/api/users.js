@@ -72,7 +72,13 @@ class UsersApi {
         ...userData
       };
       
-      const data = await apiClient.put(url, updatedUser);
+      // Add If-Match header with revision for optimistic locking
+      const headers = {};
+      if (currentUser._revision) {
+        headers['If-Match'] = currentUser._revision;
+      }
+      
+      const data = await apiClient.put(url, updatedUser, { headers });
       
       logger.success(`User ${userId} updated successfully`);
       return data;

@@ -106,8 +106,17 @@ Choose based on your needs:
 # List all skills
 node src/index.js list-skills
 
-# Find dependencies
+# Find dependencies by skill ID
 node src/index.js find -s SKILL_ID
+
+# Find dependencies by skill name
+node src/index.js find -n "Skill Name"
+
+# Find dependencies for multiple skills
+node src/index.js find-multiple -i skills.txt
+
+# Find by skill names
+node src/index.js find-multiple -i skill-names.txt --by-name
 
 # Export to CSV
 node src/index.js find -s SKILL_ID -o report.csv
@@ -115,8 +124,14 @@ node src/index.js find -s SKILL_ID -o report.csv
 # Preview removal (safe)
 node src/index.js remove -s SKILL_ID --dry-run
 
+# Remove by skill name
+node src/index.js remove -n "Skill Name" --dry-run
+
 # Remove dependencies
 node src/index.js remove -s SKILL_ID -e all
+
+# Batch remove by skill names
+node src/index.js remove -i skill-names.txt --by-name -e all
 
 # Get help
 node src/index.js --help

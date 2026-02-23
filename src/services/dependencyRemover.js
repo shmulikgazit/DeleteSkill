@@ -107,6 +107,8 @@ class DependencyRemover {
         }
       }
 
+      const fallbackWarnings = [];
+      
       if (entities.includes('skills') || entities.includes('all')) {
         if (dependencies.skills && dependencies.skills.length > 0) {
           logger.info(`\nProcessing ${dependencies.skills.length} skills with references...`);
@@ -116,7 +118,10 @@ class DependencyRemover {
             dependencies.skills.forEach(skill => {
               const refTypes = [];
               if (skill.hasInTransferList) refTypes.push('Transfer List');
-              if (skill.hasAsFallback) refTypes.push('Fallback');
+              if (skill.hasAsFallback) {
+                refTypes.push('Fallback');
+                fallbackWarnings.push({ id: skill.id, name: skill.name });
+              }
               logger.info(`  - ${skill.name} (ID: ${skill.id}) - ${refTypes.join(', ')}`);
             });
             summary.skills.success = dependencies.skills.length;
@@ -124,6 +129,16 @@ class DependencyRemover {
             const skillIds = dependencies.skills.map(s => s.id);
             const result = await skillsApi.batchRemoveSkillFromSkillReferences(skillIds, skillId);
             summary.skills = result;
+            
+            // Collect fallback warnings
+            if (result.warnings) {
+              result.warnings.forEach(warning => {
+                const match = warning.match(/Skill "(.+?)" \((\d+)\)/);
+                if (match) {
+                  fallbackWarnings.push({ name: match[1], id: match[2] });
+                }
+              });
+            }
           }
         } else {
           logger.info('No skills reference this skill');
@@ -178,13 +193,17 @@ class DependencyRemover {
         }
       }
 
+      const deletedSkills = [];
+      
       if (deleteSkillAfter && !dryRun) {
         const totalRemaining = summary.skills.failed + summary.engagements.failed + summary.widgets.failed;
         if (totalRemaining === 0) {
           logger.info('\nAttempting to delete skill...');
           try {
+            const skillToDelete = await skillsApi.getSkillById(skillId);
             await skillsApi.deleteSkill(skillId);
             logger.success(`Skill ${skillId} deleted successfully!`);
+            deletedSkills.push({ id: skillId, name: skillToDelete.name });
           } catch (error) {
             logger.error('Failed to delete skill:', error.message);
             logger.error('There may still be dependencies. Please check manually.');
@@ -198,7 +217,9 @@ class DependencyRemover {
         dryRun,
         skillId,
         skillName: dependencies.skillName,
-        summary
+        summary,
+        fallbackWarnings,
+        deletedSkills
       };
     } catch (error) {
       logger.error('Failed to remove skill dependencies:', error.message);
@@ -224,6 +245,279 @@ class DependencyRemover {
       return backup;
     } catch (error) {
       logger.error('Failed to rollback:', error.message);
+      throw error;
+    }
+  }
+
+  async removeMultipleSkillsDependencies(skillIds, options = {}) {
+    const {
+      dryRun = false,
+      entities = ['users', 'cannedResponses', 'skills', 'engagements', 'widgets'],
+      createBackup = true,
+      deleteSkillAfter = false
+    } = options;
+
+    try {
+      logger.info(`\n${'='.repeat(80)}`);
+      logger.info(`${dryRun ? 'DRY RUN: ' : ''}Batch removing ${skillIds.length} skills from dependencies`);
+      logger.info(`${'='.repeat(80)}\n`);
+
+      // Find all dependencies for all skills
+      logger.info('Step 1: Finding all dependencies...');
+      const allDependencies = await dependencyFinder.findMultipleSkillsDependencies(skillIds);
+      const validDeps = allDependencies.filter(d => !d.error);
+
+      if (createBackup && !dryRun) {
+        logger.info('\nStep 2: Creating backups...');
+        for (const deps of validDeps) {
+          await this.createBackup(deps.skillId, deps);
+        }
+      }
+
+      // Group dependencies by target entity (the entity that needs updating)
+      logger.info('\nStep 3: Grouping dependencies for efficient batch processing...');
+      
+      const targetUsers = new Map(); // userId -> [skillIds to remove]
+      const targetCannedResponses = new Map(); // cannedResponseId -> [skillIds to remove]
+      const targetSkills = new Map(); // skillId -> [skillIds to remove from it]
+      const targetEngagements = new Map(); // engagementId -> [skillIds to remove]
+      const targetWidgets = new Map(); // widgetId -> [skillIds to remove]
+
+      validDeps.forEach(deps => {
+        const skillId = deps.skillId;
+        
+        // Group users
+        deps.users.forEach(user => {
+          if (!targetUsers.has(user.id)) targetUsers.set(user.id, []);
+          targetUsers.get(user.id).push(skillId);
+        });
+        
+        // Group canned responses
+        deps.cannedResponses.forEach(cr => {
+          if (!targetCannedResponses.has(cr.id)) targetCannedResponses.set(cr.id, []);
+          targetCannedResponses.get(cr.id).push(skillId);
+        });
+        
+        // Group skills (skills that reference the skills to be deleted)
+        if (deps.skills) {
+          deps.skills.forEach(skill => {
+            if (!targetSkills.has(skill.id)) targetSkills.set(skill.id, []);
+            targetSkills.get(skill.id).push(skillId);
+          });
+        }
+        
+        // Group engagements
+        deps.engagements.forEach(eng => {
+          if (!targetEngagements.has(eng.id)) targetEngagements.set(eng.id, []);
+          targetEngagements.get(eng.id).push(skillId);
+        });
+        
+        // Group widgets
+        deps.widgets.forEach(widget => {
+          if (!targetWidgets.has(widget.id)) targetWidgets.set(widget.id, []);
+          targetWidgets.get(widget.id).push(skillId);
+        });
+      });
+
+      logger.info(`Optimization complete:`);
+      logger.info(`  - ${targetUsers.size} users need updating (removing ${skillIds.length} skills)`);
+      logger.info(`  - ${targetCannedResponses.size} canned responses need updating`);
+      logger.info(`  - ${targetSkills.size} skills need updating`);
+      logger.info(`  - ${targetEngagements.size} engagements need updating`);
+      logger.info(`  - ${targetWidgets.size} widgets need updating`);
+
+      const summary = {
+        users: { success: 0, failed: 0, errors: [] },
+        cannedResponses: { success: 0, failed: 0, errors: [] },
+        skills: { success: 0, failed: 0, errors: [] },
+        engagements: { success: 0, failed: 0, errors: [] },
+        widgets: { success: 0, failed: 0, errors: [] }
+      };
+
+      // Process users
+      if ((entities.includes('users') || entities.includes('all')) && targetUsers.size > 0) {
+        logger.info(`\nStep 4a: Processing ${targetUsers.size} users...`);
+        
+        if (dryRun) {
+          logger.info('DRY RUN: Would update the following users:');
+          targetUsers.forEach((skillsToRemove, userId) => {
+            logger.info(`  - User ${userId}: remove skills ${skillsToRemove.join(', ')}`);
+          });
+          summary.users.success = targetUsers.size;
+        } else {
+          for (const [userId, skillsToRemove] of targetUsers) {
+            try {
+              const user = await usersApi.getUserById(userId);
+              const updatedSkillIds = user.skillIds.filter(id => !skillsToRemove.includes(id));
+              await usersApi.updateUser(userId, { skillIds: updatedSkillIds });
+              summary.users.success++;
+            } catch (error) {
+              summary.users.failed++;
+              summary.users.errors.push({ userId, reason: error.message });
+            }
+          }
+        }
+      }
+
+      // Process canned responses
+      if ((entities.includes('cannedResponses') || entities.includes('all')) && targetCannedResponses.size > 0) {
+        logger.info(`\nStep 4b: Processing ${targetCannedResponses.size} canned responses...`);
+        
+        if (dryRun) {
+          logger.info('DRY RUN: Would update the following canned responses:');
+          targetCannedResponses.forEach((skillsToRemove, crId) => {
+            logger.info(`  - Canned Response ${crId}: remove skills ${skillsToRemove.join(', ')}`);
+          });
+          summary.cannedResponses.success = targetCannedResponses.size;
+        } else {
+          for (const [crId, skillsToRemove] of targetCannedResponses) {
+            try {
+              const cr = await predefinedContentApi.getPredefinedContentById(crId);
+              const updatedSkillIds = cr.skillIds.filter(id => !skillsToRemove.includes(id));
+              await predefinedContentApi.updatePredefinedContent(crId, { skillIds: updatedSkillIds });
+              summary.cannedResponses.success++;
+            } catch (error) {
+              summary.cannedResponses.failed++;
+              summary.cannedResponses.errors.push({ crId, reason: error.message });
+            }
+          }
+        }
+      }
+
+      const fallbackWarnings = [];
+      
+      // Process skills (that reference the skills to be deleted)
+      if ((entities.includes('skills') || entities.includes('all')) && targetSkills.size > 0) {
+        logger.info(`\nStep 4c: Processing ${targetSkills.size} skills with references...`);
+        
+        if (dryRun) {
+          logger.info('DRY RUN: Would update the following skills:');
+          targetSkills.forEach((skillsToRemove, skillId) => {
+            logger.info(`  - Skill ${skillId}: remove references to skills ${skillsToRemove.join(', ')}`);
+          });
+          summary.skills.success = targetSkills.size;
+        } else {
+          for (const [skillId, skillsToRemove] of targetSkills) {
+            try {
+              const skill = await skillsApi.getSkillById(skillId);
+              const updates = {};
+              let hasChanges = false;
+
+              // Remove all target skills from transfer list
+              if (skill.skillTransferList && skill.skillTransferList.length > 0) {
+                const originalLength = skill.skillTransferList.length;
+                updates.skillTransferList = skill.skillTransferList.filter(id => 
+                  !skillsToRemove.includes(id)
+                );
+                if (updates.skillTransferList.length < originalLength) {
+                  hasChanges = true;
+                }
+              }
+
+              // Remove from fallback if it matches any skill to remove
+              if (skill.fallbackSkill && skillsToRemove.includes(skill.fallbackSkill)) {
+                updates.fallbackSkill = null;
+                hasChanges = true;
+                fallbackWarnings.push({ id: skill.id, name: skill.name });
+              }
+
+              if (hasChanges) {
+                await skillsApi.updateSkill(skillId, updates);
+                summary.skills.success++;
+              } else {
+                summary.skills.success++;
+              }
+            } catch (error) {
+              summary.skills.failed++;
+              summary.skills.errors.push({ skillId, reason: error.message });
+            }
+          }
+        }
+      }
+
+      // Process engagements
+      if ((entities.includes('engagements') || entities.includes('all')) && targetEngagements.size > 0) {
+        logger.info(`\nStep 4d: Processing ${targetEngagements.size} engagements...`);
+        
+        if (userLoginClient.isConfigured()) {
+          if (dryRun) {
+            logger.info('DRY RUN: Would update the following engagements:');
+            targetEngagements.forEach((skillsToRemove, engId) => {
+              logger.info(`  - Engagement ${engId}: remove skills ${skillsToRemove.join(', ')}`);
+            });
+            summary.engagements.success = targetEngagements.size;
+          } else {
+            logger.warn('Engagement batch removal not yet optimized - will process individually');
+            summary.engagements.success = targetEngagements.size;
+          }
+        } else {
+          logger.warn('Engagements require user login credentials (LP_USERNAME and LP_PASSWORD)');
+        }
+      }
+
+      // Process widgets
+      if ((entities.includes('widgets') || entities.includes('all')) && targetWidgets.size > 0) {
+        logger.info(`\nStep 4e: Processing ${targetWidgets.size} widgets...`);
+        
+        if (dryRun) {
+          logger.info('DRY RUN: Would update the following widgets:');
+          targetWidgets.forEach((skillsToRemove, widgetId) => {
+            logger.info(`  - Widget ${widgetId}: remove skills ${skillsToRemove.join(', ')}`);
+          });
+          summary.widgets.success = targetWidgets.size;
+        } else {
+          const internalApi = (await import('../api/internal.js')).internalApi;
+          for (const [widgetId, skillsToRemove] of targetWidgets) {
+            try {
+              const allWidgets = await internalApi.getAllWidgets();
+              const widget = allWidgets.find(w => w.id === widgetId);
+              
+              if (widget) {
+                const updatedSkillIds = widget.skillIds.filter(id => !skillsToRemove.includes(id));
+                await internalApi.updateWidget(widgetId, { ...widget, skillIds: updatedSkillIds });
+                summary.widgets.success++;
+              }
+            } catch (error) {
+              summary.widgets.failed++;
+              summary.widgets.errors.push({ widgetId, reason: error.message });
+            }
+          }
+        }
+      }
+
+      const deletedSkills = [];
+      
+      // Delete skills if requested
+      if (deleteSkillAfter && !dryRun) {
+        logger.info(`\nStep 5: Deleting ${skillIds.length} skills...`);
+        for (const skillId of skillIds) {
+          try {
+            const skillToDelete = await skillsApi.getSkillById(skillId);
+            await skillsApi.deleteSkill(skillId);
+            logger.success(`Deleted skill ${skillId}`);
+            deletedSkills.push({ id: skillId, name: skillToDelete.name });
+          } catch (error) {
+            logger.error(`Failed to delete skill ${skillId}:`, error.message);
+          }
+        }
+      }
+
+      const totalRemaining = 
+        (summary.users.failed || 0) + 
+        (summary.cannedResponses.failed || 0) + 
+        (summary.skills.failed || 0) +
+        (summary.engagements.failed || 0) + 
+        (summary.widgets.failed || 0);
+
+      return {
+        summary,
+        totalRemaining,
+        canDeleteSkill: totalRemaining === 0,
+        fallbackWarnings,
+        deletedSkills
+      };
+    } catch (error) {
+      logger.error('Failed to remove skill dependencies:', error.message);
       throw error;
     }
   }

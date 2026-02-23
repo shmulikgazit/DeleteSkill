@@ -100,6 +100,11 @@ Find and display in a table:
 node src/index.js find -s 12345
 ```
 
+Find by skill name:
+```powershell
+node src/index.js find -n "Sales Support"
+```
+
 Export to CSV:
 ```powershell
 node src/index.js find -s 12345 -o report.csv
@@ -112,9 +117,38 @@ node src/index.js find -s 12345 -o report.json
 
 ### Find Dependencies for Multiple Skills
 
+Process multiple skills from command line:
 ```powershell
-node src/index.js find-multiple -s 12345,67890,11111
+node src/index.js find-multiple -s "12345,67890,11111"
 ```
+
+Or use an input file with skill IDs:
+```powershell
+# Create a file with skill IDs
+echo "12345" > skills.txt
+echo "67890" >> skills.txt
+echo "11111" >> skills.txt
+
+# Process all skills from file
+node src/index.js find-multiple -i skills.txt -o results.json
+```
+
+Or use skill names instead:
+```powershell
+# Create a file with skill names
+echo "Sales Support" > skill-names.txt
+echo "Technical Support" >> skill-names.txt
+echo "Billing" >> skill-names.txt
+
+# Process all skills by name
+node src/index.js find-multiple -i skill-names.txt --by-name -o results.json
+```
+
+Input file formats supported:
+- **Text file** (`skills.txt`): One skill ID or name per line (lines starting with # are ignored)
+- **JSON file** (`skills.json`): Array of skill IDs or names like `["12345", "67890"]`
+
+See `skills.txt.example`, `skills.json.example`, and `skill-names.txt.example` for templates.
 
 ### Remove Skill Dependencies
 
@@ -146,6 +180,24 @@ node src/index.js remove -s 12345 -e all --delete-skill
 **Remove without creating a backup** (not recommended):
 ```powershell
 node src/index.js remove -s 12345 --no-backup
+```
+
+**Batch remove multiple skills from input file (by ID)**:
+```powershell
+# Dry run first to preview changes
+node src/index.js remove -i skills.txt --dry-run
+
+# Then execute for real
+node src/index.js remove -i skills.txt -e all
+```
+
+**Batch remove multiple skills by name**:
+```powershell
+# Dry run first
+node src/index.js remove -i skill-names.txt --by-name --dry-run
+
+# Then execute
+node src/index.js remove -i skill-names.txt --by-name -e all
 ```
 
 ### Create a Backup

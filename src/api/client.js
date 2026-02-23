@@ -105,6 +105,14 @@ class ApiClient {
           'Authorization': `Bearer ${this.accessToken}`
         }
       });
+      
+      // If response has ac-revision header, attach it to the data
+      if (response.headers['ac-revision']) {
+        if (typeof response.data === 'object' && !Array.isArray(response.data)) {
+          response.data._revision = response.headers['ac-revision'];
+        }
+      }
+      
       return response.data;
     } catch (error) {
       this.handleError(error, 'GET', url);

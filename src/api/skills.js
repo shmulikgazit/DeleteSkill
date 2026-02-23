@@ -44,12 +44,20 @@ class SkillsApi {
   async deleteSkill(skillId) {
     try {
       logger.info(`Deleting skill with ID: ${skillId}...`);
-      
+
       const domain = await domainApi.getReadWriteDomain();
       const url = `https://${domain}/api/account/${config.liveperson.accountId}/configuration/le-users/skills/${skillId}?v=2.0`;
+
+      // Get the skill to obtain its revision
+      const skill = await this.getSkillById(skillId);
       
-      await apiClient.delete(url);
-      
+      const headers = {};
+      if (skill._revision) {
+        headers['If-Match'] = skill._revision;
+      }
+
+      await apiClient.delete(url, { headers });
+
       logger.success(`Skill ${skillId} deleted successfully`);
       return true;
     } catch (error) {
@@ -115,7 +123,13 @@ class SkillsApi {
         ...skillData
       };
       
-      const data = await apiClient.put(url, updatedSkill);
+      // Add If-Match header with revision for optimistic locking
+      const headers = {};
+      if (currentSkill._revision) {
+        headers['If-Match'] = currentSkill._revision;
+      }
+      
+      const data = await apiClient.put(url, updatedSkill, { headers });
       
       logger.success(`Skill ${skillId} updated successfully`);
       return data;
@@ -132,6 +146,7 @@ class SkillsApi {
       const skill = await this.getSkillById(referencingSkillId);
       const updates = {};
       let hasChanges = false;
+      const warnings = [];
 
       if (skill.skillTransferList && skill.skillTransferList.includes(Number(targetSkillId))) {
         updates.skillTransferList = skill.skillTransferList.filter(id => id !== Number(targetSkillId));
@@ -143,6 +158,7 @@ class SkillsApi {
         updates.fallbackSkill = null;
         hasChanges = true;
         logger.info(`  - Removing from fallbackSkill`);
+        warnings.push(`Skill "${skill.name}" (${referencingSkillId}) will have NO fallback after this removal`);
       }
 
       if (!hasChanges) {
@@ -153,7 +169,12 @@ class SkillsApi {
       await this.updateSkill(referencingSkillId, updates);
       
       logger.success(`Removed skill ${targetSkillId} references from skill ${referencingSkillId}`);
-      return { success: true };
+      
+      if (warnings.length > 0) {
+        warnings.forEach(w => logger.warn(`⚠️  ${w}`));
+      }
+      
+      return { success: true, warnings };
     } catch (error) {
       logger.error(`Failed to remove skill references from skill ${referencingSkillId}:`, error.message);
       return { success: false, reason: error.message };
@@ -166,16 +187,82 @@ class SkillsApi {
     const results = {
       success: 0,
       failed: 0,
-      errors: []
+      errors: [],
+      warnings: []
     };
 
     for (const skillId of referencingSkillIds) {
       const result = await this.removeSkillFromSkillReferences(skillId, targetSkillId);
       if (result.success) {
         results.success++;
+        if (result.warnings && result.warnings.length > 0) {
+          results.warnings.push(...result.warnings);
+        }
       } else {
         results.failed++;
         results.errors.push({ skillId, reason: result.reason });
+      }
+    }
+
+    logger.info(`Batch update complete: ${results.success} succeeded, ${results.failed} failed`);
+    
+    if (results.warnings.length > 0) {
+      logger.warn('\n⚠️  Important Warnings:');
+      results.warnings.forEach(w => logger.warn(`   ${w}`));
+    }
+    
+    return results;
+  }
+
+  async batchRemoveMultipleSkillsFromSkillReferences(referencingSkillIds, targetSkillIds) {
+    logger.info(`Removing ${targetSkillIds.length} skill references from ${referencingSkillIds.length} skills...`);
+    logger.info('Optimizing: fetching each skill once and removing all references together...');
+    
+    const results = {
+      success: 0,
+      failed: 0,
+      errors: []
+    };
+
+    for (const skillId of referencingSkillIds) {
+      try {
+        logger.info(`Processing skill ${skillId}...`);
+        
+        const skill = await this.getSkillById(skillId);
+        const updates = {};
+        let hasChanges = false;
+
+        // Remove all target skills from transfer list
+        if (skill.skillTransferList && skill.skillTransferList.length > 0) {
+          const originalLength = skill.skillTransferList.length;
+          updates.skillTransferList = skill.skillTransferList.filter(id => 
+            !targetSkillIds.includes(Number(id))
+          );
+          if (updates.skillTransferList.length < originalLength) {
+            hasChanges = true;
+            logger.info(`  - Removed ${originalLength - updates.skillTransferList.length} skill(s) from transfer list`);
+          }
+        }
+
+        // Remove from fallback if it matches any target skill
+        if (skill.fallbackSkill && targetSkillIds.includes(Number(skill.fallbackSkill))) {
+          updates.fallbackSkill = null;
+          hasChanges = true;
+          logger.info(`  - Removed fallback skill`);
+        }
+
+        if (hasChanges) {
+          await this.updateSkill(skillId, updates);
+          results.success++;
+          logger.success(`Removed all references from skill ${skillId}`);
+        } else {
+          logger.info(`  - No changes needed for skill ${skillId}`);
+          results.success++;
+        }
+      } catch (error) {
+        logger.error(`Failed to update skill ${skillId}:`, error.message);
+        results.failed++;
+        results.errors.push({ skillId, reason: error.message });
       }
     }
 

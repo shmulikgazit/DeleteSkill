@@ -1,0 +1,10 @@
+# List of skill names to process
+# Lines starting with # are comments and will be ignored
+# One skill name per line
+
+Sales Support
+Technical Support
+Billing
+
+# You can also add comments inline
+Customer Service  # This is another skill

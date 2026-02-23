@@ -72,7 +72,13 @@ class PredefinedContentApi {
         ...itemData
       };
       
-      const data = await apiClient.put(url, updatedItem);
+      // Add If-Match header with revision for optimistic locking
+      const headers = {};
+      if (currentItem._revision) {
+        headers['If-Match'] = currentItem._revision;
+      }
+      
+      const data = await apiClient.put(url, updatedItem, { headers });
       
       logger.success(`Predefined content ${itemId} updated successfully`);
       return data;

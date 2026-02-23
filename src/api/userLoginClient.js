@@ -80,6 +80,14 @@ class UserLoginClient {
           'Content-Type': 'application/json'
         }
       });
+      
+      // If response has ac-revision header, attach it to the data
+      if (response.headers['ac-revision']) {
+        if (typeof response.data === 'object' && !Array.isArray(response.data)) {
+          response.data._revision = response.headers['ac-revision'];
+        }
+      }
+      
       return response.data;
     } catch (error) {
       if (error.response?.status === 401) {
@@ -93,6 +101,61 @@ class UserLoginClient {
             'Content-Type': 'application/json'
           }
         });
+        
+        // If response has ac-revision header, attach it to the data
+        if (response.headers['ac-revision']) {
+          if (typeof response.data === 'object' && !Array.isArray(response.data)) {
+            response.data._revision = response.headers['ac-revision'];
+          }
+        }
+        
+        return response.data;
+      }
+      throw error;
+    }
+  }
+
+  async post(url, data, options = {}) {
+    await this.ensureAuthenticated();
+    
+    try {
+      const response = await axios.post(url, data, {
+        ...options,
+        headers: {
+          ...options.headers,
+          'Authorization': `Bearer ${this.bearerToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      // If response has ac-revision header, attach it to the data
+      if (response.headers['ac-revision']) {
+        if (typeof response.data === 'object' && !Array.isArray(response.data)) {
+          response.data._revision = response.headers['ac-revision'];
+        }
+      }
+      
+      return response.data;
+    } catch (error) {
+      if (error.response?.status === 401) {
+        logger.warn('User session expired, re-authenticating...');
+        await this.authenticate();
+        const response = await axios.post(url, data, {
+          ...options,
+          headers: {
+            ...options.headers,
+            'Authorization': `Bearer ${this.bearerToken}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        // If response has ac-revision header, attach it to the data
+        if (response.headers['ac-revision']) {
+          if (typeof response.data === 'object' && !Array.isArray(response.data)) {
+            response.data._revision = response.headers['ac-revision'];
+          }
+        }
+        
         return response.data;
       }
       throw error;
@@ -111,6 +174,14 @@ class UserLoginClient {
           'Content-Type': 'application/json'
         }
       });
+      
+      // If response has ac-revision header, attach it to the data
+      if (response.headers['ac-revision']) {
+        if (typeof response.data === 'object' && !Array.isArray(response.data)) {
+          response.data._revision = response.headers['ac-revision'];
+        }
+      }
+      
       return response.data;
     } catch (error) {
       if (error.response?.status === 401) {
@@ -124,6 +195,14 @@ class UserLoginClient {
             'Content-Type': 'application/json'
           }
         });
+        
+        // If response has ac-revision header, attach it to the data
+        if (response.headers['ac-revision']) {
+          if (typeof response.data === 'object' && !Array.isArray(response.data)) {
+            response.data._revision = response.headers['ac-revision'];
+          }
+        }
+        
         return response.data;
       }
       throw error;

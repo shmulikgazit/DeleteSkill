@@ -74,27 +74,132 @@ class DependencyFinder {
 
   async findMultipleSkillsDependencies(skillIds) {
     logger.info(`Scanning ${skillIds.length} skills for dependencies...`);
+    logger.info('Fetching all data once (this is much faster)...\n');
     
-    const results = [];
-    
-    for (const skillId of skillIds) {
-      try {
-        const deps = await this.findSkillDependencies(skillId);
-        results.push(deps);
-      } catch (error) {
-        logger.error(`Failed to scan skill ${skillId}:`, error.message);
-        results.push({
-          skillId: Number(skillId),
-          error: error.message,
-          users: [],
-          cannedResponses: [],
-          engagements: [],
-          widgets: []
-        });
-      }
-    }
+    try {
+      // Fetch all data once
+      const [allSkills, allUsers, allCannedResponses, allEngagements, allWidgets] = await Promise.all([
+        skillsApi.getAllSkills(),
+        usersApi.getAllUsers(),
+        predefinedContentApi.getAllPredefinedContent(),
+        internalApi.getAllEngagements(),
+        internalApi.getAllWidgets()
+      ]);
 
-    return results;
+      logger.success('All data fetched! Now analyzing each skill...\n');
+
+      // Create lookup maps for faster processing
+      const skillMap = new Map(allSkills.map(s => [s.id, s]));
+      
+      const results = [];
+      
+      for (const skillId of skillIds) {
+        try {
+          const numSkillId = Number(skillId);
+          const skill = skillMap.get(numSkillId);
+          
+          if (!skill) {
+            logger.error(`Skill ${skillId} not found`);
+            results.push({
+              skillId: numSkillId,
+              error: 'Skill not found',
+              users: [],
+              cannedResponses: [],
+              skills: [],
+              engagements: [],
+              widgets: []
+            });
+            continue;
+          }
+
+          // Filter data for this skill
+          const users = allUsers.filter(user => 
+            user.skillIds && user.skillIds.includes(numSkillId)
+          );
+
+          const cannedResponses = allCannedResponses.filter(item => 
+            item.skillIds && item.skillIds.includes(numSkillId)
+          );
+
+          const referencingSkills = allSkills.filter(s => 
+            (s.skillTransferList && s.skillTransferList.includes(numSkillId)) ||
+            (s.fallbackSkill && s.fallbackSkill === numSkillId)
+          );
+
+          const engagements = allEngagements.filter(eng => 
+            eng.skillId === numSkillId
+          );
+
+          const widgets = allWidgets.filter(widget => 
+            widget.skillIds && widget.skillIds.includes(numSkillId)
+          );
+
+          const dependencies = {
+            skillId: numSkillId,
+            skillName: skill.name,
+            skillDescription: skill.description,
+            users: users.map(user => ({
+              id: user.id,
+              loginName: user.loginName,
+              email: user.email,
+              nickname: user.nickname,
+              fullName: user.name
+            })),
+            cannedResponses: cannedResponses.map(item => ({
+              id: item.id,
+              title: item.data?.[0]?.title || item.title || 'Untitled',
+              type: item.type,
+              enabled: item.enabled,
+              categoriesIds: item.categoriesIds
+            })),
+            skills: referencingSkills.map(s => ({
+              id: s.id,
+              name: s.name,
+              hasInTransferList: s.skillTransferList && s.skillTransferList.includes(numSkillId),
+              hasAsFallback: s.fallbackSkill && s.fallbackSkill === numSkillId
+            })),
+            engagements: engagements.map(eng => ({
+              id: eng.id,
+              name: eng.name,
+              campaignId: eng.campaignId,
+              campaignName: eng.campaignName
+            })),
+            widgets: widgets.map(widget => ({
+              id: widget.id,
+              name: widget.name
+            }))
+          };
+
+          const totalDeps = dependencies.users.length + 
+                           dependencies.cannedResponses.length + 
+                           dependencies.skills.length +
+                           dependencies.engagements.length + 
+                           dependencies.widgets.length;
+
+          logger.info(`Skill ${skill.name} (${skillId}): ${totalDeps} dependencies`);
+          
+          results.push(dependencies);
+        } catch (error) {
+          logger.error(`Failed to scan skill ${skillId}:`, error.message);
+          results.push({
+            skillId: Number(skillId),
+            error: error.message,
+            users: [],
+            cannedResponses: [],
+            skills: [],
+            engagements: [],
+            widgets: []
+          });
+        }
+      }
+
+      logger.success(`\nCompleted scanning ${skillIds.length} skills!`);
+      return results;
+      
+    } catch (error) {
+      logger.error('Failed to fetch data:', error.message);
+      throw error;
+    }
   }
 
   getDependencySummary(dependencies) {

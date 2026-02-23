@@ -153,6 +153,93 @@ export class Formatter {
     console.log(chalk.green(`\nExported to CSV: ${outputPath}`));
   }
 
+  static async exportMultipleToCsv(dependenciesArray, outputPath) {
+    const domainApi = (await import('../api/domain.js')).domainApi;
+    const leDomain = await domainApi.getLiveEngageDomain();
+    const accountId = config.liveperson.accountId;
+
+    const csvData = dependenciesArray.map(dependencies => {
+      const { skillId, skillName, users, cannedResponses, skills, engagements, widgets } = dependencies;
+
+      const usersText = users.length > 0 
+        ? users.map(u => `${u.loginName} (${u.id})`).join('; ')
+        : '';
+      
+      const usersUrls = users.length > 0
+        ? users.map(u => `https://${leDomain}/a/v2/${accountId}/#/um/user/${u.id}`).join('; ')
+        : '';
+      
+      const cannedText = cannedResponses.length > 0
+        ? cannedResponses.map(c => `${c.title || 'Untitled'} (${c.id})`).join('; ')
+        : '';
+      
+      const cannedUrls = cannedResponses.length > 0
+        ? cannedResponses.map(c => `https://${leDomain}/a/v2/${accountId}/#/ac/predefined/${c.id}`).join('; ')
+        : '';
+      
+      const skillsText = (skills && skills.length > 0)
+        ? skills.map(s => `${s.name} (${s.id})`).join('; ')
+        : '';
+      
+      const skillsUrls = (skills && skills.length > 0)
+        ? skills.map(s => `https://${leDomain}/a/v2/${accountId}/#/um/skill/${s.id}`).join('; ')
+        : '';
+      
+      const engagementsText = engagements.length > 0
+        ? engagements.map(e => `${e.name} (${e.id}) in campaign ${e.campaignName} (${e.campaignId})`).join('; ')
+        : '';
+      
+      const engagementsUrls = engagements.length > 0
+        ? engagements.map(e => `https://${leDomain}/a/v2/${accountId}/#/camp/campaigns/web/${e.campaignId}/engagement/web/${e.id}/settings`).join('; ')
+        : '';
+      
+      const widgetsText = widgets.length > 0
+        ? widgets.map(w => `${w.name} (${w.id})`).join('; ')
+        : '';
+      
+      const widgetsUrls = widgets.length > 0
+        ? widgets.map(w => `https://${leDomain}/a/v2/${accountId}/#/aw/my-connections`).join('; ')
+        : '';
+
+      return {
+        'Skill ID': skillId,
+        'Skill Name': skillName,
+        'Remove from User(s)': usersText,
+        'User URL(s)': usersUrls,
+        'Remove from Canned Response(s)': cannedText,
+        'Canned Response URL(s)': cannedUrls,
+        'Remove from Skill(s)': skillsText,
+        'Skill URL(s)': skillsUrls,
+        'Remove from Engagement(s)': engagementsText,
+        'Engagement URL(s)': engagementsUrls,
+        'Remove from Widget(s)': widgetsText,
+        'Widget URL(s)': widgetsUrls
+      };
+    });
+
+    const parser = new Parser({
+      fields: [
+        'Skill ID',
+        'Skill Name',
+        'Remove from User(s)',
+        'User URL(s)',
+        'Remove from Canned Response(s)',
+        'Canned Response URL(s)',
+        'Remove from Skill(s)',
+        'Skill URL(s)',
+        'Remove from Engagement(s)',
+        'Engagement URL(s)',
+        'Remove from Widget(s)',
+        'Widget URL(s)'
+      ]
+    });
+    const csv = parser.parse(csvData);
+    
+    mkdirSync(join(process.cwd(), 'reports'), { recursive: true });
+    writeFileSync(outputPath, csv, 'utf-8');
+    console.log(chalk.green(`\nExported ${dependenciesArray.length} skills to CSV: ${outputPath}`));
+  }
+
   static displaySkillsList(skills) {
     console.log('\n' + chalk.bold.cyan(`Total Skills: ${skills.length}`));
     console.log(chalk.gray('='.repeat(80)) + '\n');
@@ -174,7 +261,9 @@ export class Formatter {
     console.log(table.toString());
   }
 
-  static displayRemovalSummary(summary) {
+  static displayRemovalSummary(summary, options = {}) {
+    const { fallbackWarnings = [], deletedSkills = [] } = options;
+    
     console.log('\n' + chalk.bold.cyan('Removal Summary'));
     console.log(chalk.gray('='.repeat(80)) + '\n');
 
@@ -188,5 +277,22 @@ export class Formatter {
     });
 
     console.log(table.toString());
+    
+    // Display fallback warnings
+    if (fallbackWarnings.length > 0) {
+      console.log('\n' + chalk.yellow.bold('⚠️  Fallback Warnings'));
+      console.log(chalk.yellow('The following skills now don\'t have a fallback skill:'));
+      fallbackWarnings.forEach(skill => {
+        console.log(chalk.yellow(`  - ${skill.name} (ID: ${skill.id})`));
+      });
+    }
+    
+    // Display deleted skills
+    if (deletedSkills.length > 0) {
+      console.log('\n' + chalk.green.bold('✓ Deleted Skills'));
+      deletedSkills.forEach(skill => {
+        console.log(chalk.green(`  - ${skill.name} (ID: ${skill.id})`));
+      });
+    }
   }
 }
