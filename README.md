@@ -20,7 +20,7 @@ This tool helps you identify all dependencies and systematically remove them.
 - Export reports in JSON or CSV format with direct UI links
 - List all skills in your account
 
-### Phase 2: Dependency Removal ⚠️ (Coded but not fully tested yet)
+### Phase 2: Dependency Removal ⚠️
 - Remove skill from users automatically
 - Remove skill from canned responses automatically
 - Remove skill references from other skills automatically
@@ -31,7 +31,7 @@ This tool helps you identify all dependencies and systematically remove them.
 - Batch processing with error handling
 - Optional skill deletion after cleanup
 
-> **Note**: Phase 2 removal functionality is implemented but should be tested with `--dry-run` first in your environment before making actual changes.
+> **⚠️ CRITICAL WARNING**: Phase 2 removal operations modify your LivePerson configuration directly. While the tool has been tested in development environments, **all removals are performed at your own risk and responsibility**. The author assumes no liability for any data loss, configuration issues, or operational disruptions. **ALWAYS use `--dry-run` first** to preview changes, verify backups are created, and test in a non-production environment before using in production.
 
 ## Prerequisites
 
