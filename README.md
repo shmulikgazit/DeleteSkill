@@ -11,7 +11,7 @@ This tool helps you identify all dependencies and systematically remove them.
 
 ## Features
 
-### Phase 1: Dependency Identification ✅
+### Phase 1: Dependency Identification ✅ (Tested)
 - Find all users assigned to a skill
 - Find all canned responses (predefined content) using a skill
 - Find all skills that reference this skill (transfer list & fallback)
@@ -20,7 +20,7 @@ This tool helps you identify all dependencies and systematically remove them.
 - Export reports in JSON or CSV format with direct UI links
 - List all skills in your account
 
-### Phase 2: Dependency Removal ✅
+### Phase 2: Dependency Removal ⚠️ (Coded but not fully tested yet)
 - Remove skill from users automatically
 - Remove skill from canned responses automatically
 - Remove skill references from other skills automatically
@@ -30,6 +30,8 @@ This tool helps you identify all dependencies and systematically remove them.
 - Automatic backup before making changes
 - Batch processing with error handling
 - Optional skill deletion after cleanup
+
+> **Note**: Phase 2 removal functionality is implemented but should be tested with `--dry-run` first in your environment before making actual changes.
 
 ## Prerequisites
 
